@@ -12,10 +12,10 @@ packages = [
 ]
 readme = "README.md"
 repository = "https://github.com/long2ice/fastapi-limiter.git"
-version = "0.1.6"
+version = "0.1.6.1"
 
 [tool.poetry.dependencies]
-redis = ">=4.2.0rc1"
+redis = "^5.1.0"
 fastapi = "*"
 python = "^3.9"
 
