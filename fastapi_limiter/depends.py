@@ -25,10 +25,18 @@ class RateLimiter:
         self.identifier = identifier
         self.callback = callback
 
-    async def _check(self, key):
+    async def _check(self, key: str):
         redis = FastAPILimiter.redis
         pexpire = await redis.evalsha(FastAPILimiter.lua_sha, 1, key, str(self.times), str(self.milliseconds))
         return pexpire
+
+    async def _check_with_script_load_fallback(self, key: str):
+        try:
+            return await self._check(key)
+        except pyredis.exceptions.NoScriptError:
+            FastAPILimiter.lua_sha = await FastAPILimiter.redis.script_load(FastAPILimiter.lua_script)
+            return await self._check(key)
+        
 
     async def __call__(self, request: Request, response: Response):
         if not FastAPILimiter.redis:
@@ -46,11 +54,7 @@ class RateLimiter:
         callback = self.callback or FastAPILimiter.http_callback
         rate_key = await identifier(request)
         key = f"{FastAPILimiter.prefix}:{rate_key}:{index}"
-        try:
-            pexpire = await self._check(key)
-        except pyredis.exceptions.NoScriptError:
-            FastAPILimiter.lua_sha = await FastAPILimiter.redis.script_load(FastAPILimiter.lua_script)
-            pexpire = await self._check(key)
+        pexpire = await self._check_with_script_load_fallback(key)
         if pexpire != 0:
             return await callback(request, response, pexpire)
 
@@ -62,7 +66,7 @@ class WebSocketRateLimiter(RateLimiter):
         identifier = self.identifier or FastAPILimiter.identifier
         rate_key = await identifier(ws)
         key = f"{FastAPILimiter.prefix}:ws:{rate_key}:{context_key}"
-        pexpire = await self._check(key)
+        pexpire = await self._check_with_script_load_fallback(key)
         callback = self.callback or FastAPILimiter.ws_callback
         if pexpire != 0:
             return await callback(ws, pexpire)
